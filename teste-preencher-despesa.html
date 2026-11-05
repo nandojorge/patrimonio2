@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Teste de pré-preenchimento | Património</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #283141; font-family: system-ui, -apple-system, sans-serif; background: #edf0f3; }
+    .top { background: white; padding: 16px max(18px, calc((100% - 1160px)/2)); box-shadow: 0 1px 4px #00000014; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    p { margin: 5px 0; font-size: 13px; line-height: 1.45; }
+    .status { font-weight: 600; margin-top: 8px; }
+    .warn { color: #8c3b21; }
+    .good { color: #166344; }
+    .preview { color: #45556d; }
+    .actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+    a { color: #235d92; font-size: 13px; }
+    iframe { display: block; width: 100%; height: calc(100vh - 154px); min-height: 750px; border: 0; }
+    @media (max-width: 650px) { .top { padding: 12px; } iframe { height: calc(100vh - 183px); min-height: 650px; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <h1>Pré-preenchimento de despesa <small>(teste)</small></h1>
+    <p id="summary">A preparar o formulário…</p>
+    <p id="status" class="status preview" role="status" aria-live="polite">A aguardar pela aplicação.</p>
+    <p>Confirma os dados e escolhe a categoria antes de guardar. Esta página <strong>nunca grava</strong> a despesa automaticamente.</p>
+    <div class="actions"><a href="page.Page2.html" target="_blank" rel="noopener noreferrer">Abrir formulário original, sem pré-preenchimento</a></div>
+  </header>
+  <iframe id="app" title="Formulário original de Nova Despesa" src="page.Page2.html"></iframe>
+  <script>
+  (() => {
+    'use strict';
+
+    // O fragmento (#) fica no navegador; não é enviado ao GitHub Pages.
+    const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const summary = document.getElementById('summary');
+    const status = document.getElementById('status');
+    const frame = document.getElementById('app');
+    const allowedAccounts = new Set(['Ana', 'Nando', 'Vivus', 'Dinheiro Pessoal', 'Dinheiro Vivus', 'Ana CTR', 'Acertos']);
+    const allowedKinds = new Set(['Saída', 'Entrada']);
+
+    function show(text, css = 'preview') {
+      status.textContent = text;
+      status.className = `status ${css}`;
+    }
+    function validISODate(s) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+      const d = new Date(`${s}T12:00:00Z`);
+      return !Number.isNaN(d.valueOf()) && d.toISOString().slice(0, 10) === s;
+    }
+    function parseAmount(raw) {
+      if (!/^\d{1,7}(?:[.,]\d{1,2})?$/.test(raw)) return null;
+      const n = Number(raw.replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n.toFixed(2) : null;
+    }
+    function leaf(doc, label) {
+      return [...doc.querySelectorAll('div[dir="auto"]')]
+        .find(el => el.children.length === 0 && el.textContent.trim() === label);
+    }
+    function setReactValue(win, element, value) {
+      const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+      setter.call(element, value);
+      element.dispatchEvent(new win.Event('input', { bubbles: true }));
+      element.dispatchEvent(new win.Event('change', { bubbles: true }));
+    }
+    function chooseOption(win, select, label) {
+      const option = [...select.options].find(o => o.textContent.trim() === label);
+      if (!option) return false;
+      select.value = option.value;
+      select.dispatchEvent(new win.Event('change', { bubbles: true }));
+      return true;
+    }
+    function findSelect(doc, label) {
+      return [...doc.querySelectorAll('select')]
+        .find(s => [...s.options].some(o => o.textContent.trim() === label));
+    }
+    function clickLabel(doc, text) {
+      const el = leaf(doc, text);
+      const clickable = el?.closest('[tabindex="0"]');
+      if (!clickable) return false;
+      clickable.click();
+      return true;
+    }
+    const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function selectDate(win, date) {
+      const doc = win.document;
+      const [year, month, day] = date.split('-').map(Number);
+      const names = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+      const label = leaf(doc, 'Data do Movimento');
+      const row = label?.parentElement?.parentElement?.querySelector('[tabindex="0"]');
+      if (!row) return false;
+      row.click();
+      await tick(120);
+
+      let yearSelect = findSelect(doc, String(year));
+      if (!yearSelect || !chooseOption(win, yearSelect, String(year))) return false;
+      await tick(120);
+      let monthSelect = findSelect(doc, 'Janeiro');
+      if (!monthSelect || !chooseOption(win, monthSelect, names[month - 1])) return false;
+      await tick(180);
+
+      // O calendário mostra também dias dos meses vizinhos. Seleciona o dia
+      // do mês escolhido, que é apresentado com a cor normal e não cinzento.
+      const cells = [...doc.querySelectorAll('[tabindex="0"]')].filter(el => {
+        if (el.textContent.trim() !== String(day)) return false;
+        const text = el.querySelector('div[dir="auto"]');
+        return text && text.textContent.trim() === String(day) &&
+          text.style.color === 'rgb(50, 54, 58)';
+      });
+      if (cells.length !== 1) return false;
+      cells[0].click();
+      await tick(160);
+      const currentLabel = leaf(doc, 'Data do Movimento');
+      const currentRow = currentLabel?.parentElement?.parentElement?.querySelector('[tabindex="0"]');
+      const shown = currentRow?.textContent || '';
+      return shown.includes(`${String(day).padStart(2,'0')}-${String(month).padStart(2,'0')}-${year}`);
+    }
+
+    const requested = {
+      amount: parseAmount(params.get('valor') || ''),
+      date: params.get('data') || '',
+      description: (params.get('descricao') || '').trim().slice(0, 180),
+      account: params.get('conta') || 'Vivus',
+      kind: params.get('tipo') || 'Saída',
+      owner: params.get('titularidade') || 'Vivusfisio',
+      bankRef: (params.get('referencia') || '').slice(0, 90)
+    };
+    if (!requested.amount || !validISODate(requested.date) || !requested.description ||
+        !allowedAccounts.has(requested.account) || !allowedKinds.has(requested.kind) ||
+        !['Vivusfisio', 'Pessoal'].includes(requested.owner)) {
+      show('Link incompleto ou inválido. O formulário original continua disponível.', 'warn');
+      summary.textContent = 'Não foram introduzidos dados na aplicação.';
+      return;
+    }
+
+    summary.textContent = `${requested.date} · ${requested.amount} € · ${requested.description} · Conta: ${requested.account}` +
+      (requested.bankRef ? ` · Ref.: ${requested.bankRef}` : '');
+    frame.addEventListener('load', async () => {
+      let win;
+      try { win = frame.contentWindow; void win.document.body; }
+      catch { show('O navegador não permitiu aceder ao formulário. Usa a ligação original.', 'warn'); return; }
+      for (let retry = 0; retry < 80; retry++) {
+        const doc = win.document;
+        if (doc.querySelectorAll('input[type="text"]').length < 2 ||
+            !leaf(doc, 'Data do Movimento') || !findSelect(doc, 'Vivus')) {
+          await tick(250);
+          continue;
+        }
+        try {
+          // Primeiro os botões de contexto; o utilizador continua a gravar manualmente.
+          const kindOK = clickLabel(doc, requested.kind);
+          await tick(120);
+          const ownerOK = clickLabel(doc, requested.owner);
+          await tick(120);
+          const inputs = doc.querySelectorAll('input[type="text"]');
+          setReactValue(win, inputs[0], requested.amount);
+          setReactValue(win, inputs[1], requested.description);
+          await tick(100);
+          const dateOK = await selectDate(win, requested.date);
+          await tick(120);
+          const accountOK = chooseOption(win, findSelect(doc, 'Vivus'), requested.account);
+          await tick(300);
+          const currentInputs = doc.querySelectorAll('input[type="text"]');
+          const valuesOK = currentInputs[0]?.value === requested.amount &&
+            currentInputs[1]?.value === requested.description;
+          const accountSelected = findSelect(doc, 'Vivus')?.selectedOptions[0]?.textContent.trim() === requested.account;
+          if (kindOK && ownerOK && dateOK && accountOK && valuesOK && accountSelected) {
+            show('Campos preenchidos no formulário. Confirma tudo, escolhe a categoria e grava tu a despesa.', 'good');
+          } else {
+            show('Pré-preenchimento parcial. Verifica todos os campos e corrige os que faltarem antes de gravar.', 'warn');
+          }
+          return;
+        } catch {
+          show('Não foi possível preencher todos os campos. Verifica-os manualmente antes de gravar.', 'warn');
+          return;
+        }
+      }
+      show('O formulário demorou demasiado a carregar. Podes usar a ligação original.', 'warn');
+    }, { once: true });
+  })();
+  </script>
+</body>
+</html>
