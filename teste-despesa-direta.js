@@ -19,6 +19,82 @@
       !['Saída', 'Entrada'].includes(kind) || !['Vivusfisio', 'Pessoal'].includes(owner)) return;
 
   const expectedAmount = Number(amount.replace(',', '.')).toFixed(2);
+  let noticeState = null;
+  let redirectScheduled = false;
+
+  // Quando o formulário é aberto por ligação direta, a ação original
+  // "Navigate back" não tem uma página anterior na pilha da aplicação.
+  // Nesta página de teste, regressamos à lista apenas depois de o Stein
+  // confirmar a criação da despesa exata indicada na ligação.
+  function isExpensePost(method, url) {
+    try {
+      const endpoint = new URL(String(url), location.href);
+      return String(method).toUpperCase() === 'POST' &&
+        endpoint.origin === 'https://api.steinhq.com' &&
+        endpoint.pathname === '/v1/storages/66fe6b324d11fd04f0335b3a/despesas';
+    } catch { return false; }
+  }
+
+  function isExpectedExpense(body) {
+    if (typeof body !== 'string') return false;
+    try {
+      const parsed = JSON.parse(body);
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      return rows.length === 1 && rows.some(row =>
+        row && row.categoria !== 'Transferência' &&
+        String(row.descricao || '').trim() === description &&
+        String(row.conta || '') === account &&
+        Math.abs(Number(String(row.valor).replace(',', '.')) - Number(expectedAmount)) < 0.005
+      );
+    } catch { return false; }
+  }
+
+  function returnAfterSave() {
+    if (redirectScheduled) return;
+    redirectScheduled = true;
+    if (noticeState) noticeState.textContent = 'Despesa gravada. A regressar à lista…';
+    window.setTimeout(() => {
+      window.location.assign(new URL('page.Page1.html', window.location.href).href);
+    }, 900);
+  }
+
+  if (typeof window.fetch === 'function') {
+    const originalFetch = window.fetch;
+    window.fetch = function (input, init) {
+      const requestUrl = typeof input === 'string' || input instanceof URL ? input : input?.url;
+      const requestMethod = init?.method || input?.method || 'GET';
+      const requestBody = init?.body;
+      const candidate = isExpensePost(requestMethod, requestUrl);
+      const bodyPromise = candidate && typeof requestBody !== 'string' && input?.clone
+        ? input.clone().text().catch(() => '')
+        : Promise.resolve(requestBody);
+      const result = originalFetch.apply(this, arguments);
+      if (!candidate) return result;
+      return Promise.resolve(result).then(async response => {
+        const sentBody = await bodyPromise;
+        if (response.ok && isExpectedExpense(sentBody)) returnAfterSave();
+        return response;
+      });
+    };
+  }
+
+  if (typeof XMLHttpRequest !== 'undefined') {
+    const originalOpen = XMLHttpRequest.prototype.open;
+    const originalSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__vivusTestExpensePost = isExpensePost(method, url);
+      return originalOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      if (this.__vivusTestExpensePost && isExpectedExpense(body)) {
+        this.addEventListener('load', () => {
+          if (this.status >= 200 && this.status < 300) returnAfterSave();
+        }, { once: true });
+      }
+      return originalSend.apply(this, arguments);
+    };
+  }
+
   const tick = ms => new Promise(resolve => setTimeout(resolve, ms));
   const leaf = text => [...document.querySelectorAll('div[dir="auto"]')]
     .find(el => el.children.length === 0 && el.textContent.trim() === text);
@@ -122,6 +198,7 @@
     // O aviso é separado do formulário e contém uma alternativa caso a app
     // não navegue após gravar. Não dispara qualquer ação de gravação.
     const state = makeNotice();
+    noticeState = state;
     for (let i = 0; i < 80; i++) {
       const inputs = document.querySelectorAll('input[type="text"]');
       if (inputs.length < 2 || !leaf('Data do Movimento') || !selectContaining('Vivus')) {
