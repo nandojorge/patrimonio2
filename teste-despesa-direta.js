@@ -97,6 +97,12 @@
     Object.assign(back.style, { display: 'block', marginTop: '6px', color: '#07598e' });
     box.append(back);
     document.body.append(box);
+    const leaveCheck = setInterval(() => {
+      if (!location.pathname.endsWith('/page.Page2.html')) {
+        clearInterval(leaveCheck);
+        box.remove();
+      }
+    }, 500);
     return state;
   }
 
