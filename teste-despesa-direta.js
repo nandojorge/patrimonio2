@@ -75,7 +75,19 @@
       const n = el.querySelector('div[dir="auto"]');
       return n && n.textContent.trim() === String(day) && n.style.color === 'rgb(50, 54, 58)';
     });
-    if (second) { second.click(); await tick(220); }
+    if (second) {
+      // O toque real incide sobre o número (div interior), não na célula exterior.
+      const target = second.querySelector('div[dir="auto"]') || second;
+      target.click();
+      await tick(180);
+      if (!current().includes(expected)) {
+        const opt = { bubbles: true, cancelable: true, button: 0, view: window };
+        target.dispatchEvent(new MouseEvent('mousedown', { ...opt, buttons: 1 }));
+        target.dispatchEvent(new MouseEvent('mouseup', { ...opt, buttons: 0 }));
+        target.dispatchEvent(new MouseEvent('click', opt));
+        await tick(180);
+      }
+    }
     return current().includes(expected);
   }
 
