@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Teste de pré-preenchimento | Património</title>
+  <script>
+    // Os links já entregues continuam válidos. A versão direta permite à app
+    // navegar normalmente após o utilizador guardar a despesa.
+    const prefill = new URLSearchParams(location.hash.slice(1));
+    if (prefill.has('data') && prefill.has('valor') && prefill.has('descricao')) {
+      location.replace('teste-despesa-direta.html' + location.hash);
+    }
+  </script>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; color: #283141; font-family: system-ui, -apple-system, sans-serif; background: #edf0f3; }
