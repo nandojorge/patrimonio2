@@ -66,8 +66,17 @@
     if (dayButtons.length !== 1) return false;
     dayButtons[0].click();
     await tick(160);
-    const row = leaf('Data do Movimento')?.parentElement?.parentElement?.querySelector('[tabindex="0"]');
-    return Boolean(row?.textContent?.includes(`${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`));
+    const expected = `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`;
+    const current = () => leaf('Data do Movimento')?.parentElement?.parentElement?.querySelector('[tabindex="0"]')?.textContent || '';
+    if (current().includes(expected)) return true;
+    // O calendário pode primeiro realçar o dia e só aplicar a data no segundo toque.
+    const second = [...document.querySelectorAll('[tabindex="0"]')].find(el => {
+      if (el.textContent.trim() !== String(day)) return false;
+      const n = el.querySelector('div[dir="auto"]');
+      return n && n.textContent.trim() === String(day) && n.style.color === 'rgb(50, 54, 58)';
+    });
+    if (second) { second.click(); await tick(220); }
+    return current().includes(expected);
   }
 
   function makeNotice() {
