@@ -144,9 +144,13 @@
         const currentInputs = document.querySelectorAll('input[type="text"]');
         const valuesOK = currentInputs[0]?.value === expectedAmount && currentInputs[1]?.value === description;
         const selectedAccount = selectContaining('Vivus')?.selectedOptions[0]?.textContent.trim();
-        state.textContent = kindOK && ownerOK && dateOK && accountOK && valuesOK && selectedAccount === account
-          ? 'Dados preenchidos. Confirma, escolhe a categoria e grava.'
-          : 'Confirma todos os campos: o pré-preenchimento foi parcial.';
+        if (!dateOK) {
+          state.textContent = `Atenção: escolhe manualmente a data ${date.split('-').reverse().join('-')} no calendário e confirma os outros campos antes de gravar.`;
+        } else {
+          state.textContent = kindOK && ownerOK && accountOK && valuesOK && selectedAccount === account
+            ? 'Dados preenchidos. Confirma, escolhe a categoria e grava.'
+            : 'Confirma todos os campos: o pré-preenchimento foi parcial.';
+        }
       } catch {
         state.textContent = 'Não foi possível preencher tudo. Confirma manualmente.';
       }
